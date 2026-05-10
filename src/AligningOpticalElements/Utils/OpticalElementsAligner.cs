@@ -8,6 +8,18 @@ namespace AligningOpticalElements;
 /// </summary>
 public class OpticalElementsAligner
 {
+    public static Settings settings = new Settings(
+       0.0008f,
+       20,
+       16,
+       3,
+       0.05f,
+       0.01f,
+       5,
+       3,
+       MorphShapes.Rect,
+       MorphShapes.Ellipse
+   );
     /// <summary>
     /// Seznam detekovaných bodů v obraze.
     /// </summary>
@@ -20,7 +32,7 @@ public class OpticalElementsAligner
     public void LoadSpots(Mat img)
     {
         List<Spot> sp = new List<Spot>();
-
+        
         if (img == null || img.Empty())
         {
             Console.WriteLine("LoadSpots: img je null nebo empty");
@@ -36,12 +48,10 @@ public class OpticalElementsAligner
             ContourApproximationModes.ApproxSimple
         );
         int foundCount = 0;
-        int devSpotY = (int)(bin.Height * bin.Width / 100 * 0.0008);
+        int devSpotY = (int)(bin.Height * bin.Width / 100 * settings.DevSpotY);
         for (int i = 0; i < contours.Length; i++)
-        {
-            
+        {          
             double area = Cv2.ContourArea(contours[i]);
-
             if (area < 5) continue;
 
             int minY = int.MaxValue;
@@ -65,11 +75,7 @@ public class OpticalElementsAligner
             if (Math.Abs(mom.M00) < 1e-9) continue;
             int xImg = (int)Math.Round(mom.M10 / mom.M00);
             int yImg = (int)Math.Round(mom.M01 / mom.M00);
-            if (diameterY > diameterX+ devSpotY)
-            {
-               xImg = xImg-diameterY/diameterX*20;
-               diameterY = 30 * diameterY/diameterX;
-            }
+      
             int radiusPx = (int)Math.Round(diameterY / 2.0);
 
             if (radiusPx >= 2)
@@ -95,34 +101,18 @@ public class OpticalElementsAligner
     /// <returns>Vyčištěný binární obraz připravený pro detekci kontur.</returns>
     private Mat ProcessingImg(Mat img)
     {
-        bool show = true;
-
         Mat grayImg = ToGray(img);
         Mat enhancedImg = EnhanceImage(grayImg);
         Mat thresholdImg = Threshold(enhancedImg);
-        Mat morphImg = MorphClosing(thresholdImg);
-        Mat cleanImg = removeDots(morphImg);
-
-        if (show)
-        {
-            //Console.WriteLine("gray");
-            //ShowImage(grayImg);
-            //Console.WriteLine("contrast");
-            ////ShowImage(enhancedImg);
-            //Console.WriteLine("threshold");
-            ////ShowImage(thresholdImg);
-            //Console.WriteLine("closing");
-            ////ShowImage(morphImg);
-            //Console.WriteLine("clean");
-            ////ShowImage(cleanImg);
-        }
+        Mat morphCloseImg = MorphClosing(thresholdImg);
+        Mat morphOpenImg = MorphOpening(morphCloseImg);
 
         grayImg.Dispose();
         enhancedImg.Dispose();
         thresholdImg.Dispose();
-        morphImg.Dispose();
+        morphCloseImg.Dispose();
 
-        return cleanImg;
+        return morphOpenImg;
     }
 
     /// <summary>
@@ -150,8 +140,8 @@ public class OpticalElementsAligner
     {
         Mat claheImg = new Mat();
         var clahe = Cv2.CreateCLAHE(
-            clipLimit: 20.0,
-            tileGridSize: new Size(16, 16)
+            clipLimit: settings.ClipLimit,
+            tileGridSize: new Size(settings.TileGridSize, settings.TileGridSize)
         );
 
         clahe.Apply(img, claheImg);
@@ -171,7 +161,7 @@ public class OpticalElementsAligner
     private Mat Threshold(Mat img)
     {
         Mat bw = new Mat();
-        int minimumPixels = (int)(img.Height * img.Width / 100 * 0.05);
+        int minimumPixels = (int)(img.Height * img.Width / 100 * settings.MinimumPixels);
 
         int whiteCount = 0;
         int k = 2;
@@ -196,7 +186,7 @@ public class OpticalElementsAligner
         }
 
         int whiteCountPost = 0;
-        int maxPixelsDiff = (int)(img.Height * img.Width / 100 * 0.01); 
+        int maxPixelsDiff = (int)(img.Height * img.Width / 100 * settings.MaxPixelsDiff); 
         for (int i = 0; i < 50; i++)
         {
             th -= 1;
@@ -236,33 +226,19 @@ public class OpticalElementsAligner
     /// </summary>
     /// <param name="img">Binární obraz.</param>
     /// <returns>Vyčištěný obraz bez malých artefaktů.</returns>
-    private Mat removeDots(Mat img)
+    private Mat MorphOpening(Mat img)
     {
-        Mat labels = new Mat();
-        Mat stats = new Mat();
-        Mat centroids = new Mat();
+        Mat result = new Mat();
 
-        int n = Cv2.ConnectedComponentsWithStats(
-            img, labels, stats, centroids
-        );
-        Mat clean = Mat.Zeros(img.Size(), MatType.CV_8U);
+        Mat kernel = Cv2.GetStructuringElement(
+            MorphShapes.Ellipse,
+            new Size(3, 3));
 
-        for (int i = 1; i < n; i++)
-        {
-            int area = stats.At<int>(i, (int)ConnectedComponentsTypes.Area);
+        Cv2.MorphologyEx(img, result, MorphTypes.Open, kernel);
 
-            if (area >= 20)
-            {
-                Mat mask = new Mat();
-                Cv2.Compare(labels, i, mask, 0);
-                clean.SetTo(255, mask);
-                mask.Dispose();
-            }
-        }
-        labels.Dispose();
-        stats.Dispose();
-        centroids.Dispose();
-        return clean;
+        kernel.Dispose();
+
+        return result;
     }
 
     /// <summary>
