@@ -13,10 +13,12 @@ class Program
     static void Main()
     {
         OpticalElementsAligner aligner = new OpticalElementsAligner();
-        //C:\Users\ondre\Desktop\SEMESTRALNI PROJEKT\semestralni_projekt\src\AligningOpticalElements\data\Align camera data\R585 v1 + R52\dev
         //R585 v1 + R52 x+2 y+2
         //Zygo flat 4_ + flat
-        string rootPath = @"C:\Users\ondre\Desktop\SEMESTRALNI PROJEKT\semestralni_projekt\src\AligningOpticalElements\data\Align camera data\R585 v1 + R52\dev";
+        string rootPath = Path.GetFullPath(
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+            @"..\..\..\data\Align camera data"));
+
         foreach (string file in Directory.GetFiles(rootPath, "*.bmp", SearchOption.AllDirectories))
         {
             Console.WriteLine(file);
